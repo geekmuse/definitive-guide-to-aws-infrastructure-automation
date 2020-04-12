@@ -1,0 +1,4 @@
+*.tfstate*
+outputs.json
+outputs.txt
+.terraform

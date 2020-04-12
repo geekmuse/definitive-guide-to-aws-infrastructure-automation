@@ -1,0 +1,11 @@
+config:
+  aws:region: us-east-1
+  pulumi:AmiByOs.us-east-1.AmazonLinux2: ami-0c6b1d09930fac512
+  pulumi:AmiByOs.us-east-1.Windows2016Base: ami-06bee8e1000e44ca4
+  pulumi:AmiByOs.us-west-2.AmazonLinux2: ami-0cb72367e98845d43
+  pulumi:AmiByOs.us-west-2.Windows2016Base: ami-07f35a597a32e470d
+  pulumi:Az: us-east-1c
+  pulumi:ConnectPortByOs.AmazonLinux2: "22"
+  pulumi:ConnectPortByOs.Windows2016Base: "3389"
+  pulumi:InstanceType: t2.nano
+  pulumi:Os: AmazonLinux2

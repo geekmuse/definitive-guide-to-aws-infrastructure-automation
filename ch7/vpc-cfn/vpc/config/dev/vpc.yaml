@@ -1,0 +1,14 @@
+template_path: vpc.yaml
+parameters:
+  AwsDns: 'true'
+  BaseCidr: 10.0.0.0/16
+  HighAvailability: 'false'
+  Environment: dev
+hooks:
+  after_create: 
+    - !cmd "echo Vpc has been created."
+  before_delete:
+    - !cmd "echo Vpc will be deleted."
+stack_tags:
+  Environment: dev
+  Provisioner: sceptre:/vpc/templates/vpc.yaml

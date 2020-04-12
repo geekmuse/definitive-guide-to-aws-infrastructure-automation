@@ -1,0 +1,536 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: |
+  Creates a three-tier VPC with high-availability toggle.
+
+Parameters:
+  AwsDns:
+    Description: Use AWS DNS
+    Type: String
+    AllowedValues:
+      - 'true'
+      - 'false'
+    Default: 'true'
+
+  BaseCidr:
+    Description: Base CIDR of the VPC
+    Type: String
+    Default: '10.0.0.0/16'
+    ConstraintDescription: must be a string.
+
+  HighAvailability:
+    Description: Build with high-availability features (e.g. per-AZ NAT GW)
+    Type: String
+    AllowedValues:
+      - 'true'
+      - 'false'
+    Default: 'false'
+
+  Environment:
+    Description: Environment identifier 
+    Type: String
+    AllowedValues:
+      - dev
+      - qa
+      - stg
+      - prod
+    Default: dev
+
+Conditions:
+  AwsDns: !Equals [ !Ref AwsDns, 'true' ]
+  HighAvailability: !Equals [ !Ref HighAvailability, 'true' ]
+
+Resources:
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref BaseCidr
+      EnableDnsSupport: !If [ AwsDns, 'true', 'false' ]
+      EnableDnsHostnames: !If [ AwsDns, 'true', 'false' ]
+      InstanceTenancy: default
+      Tags:
+        - Key: Name
+          Value: !Ref Environment
+
+
+  FlowLogLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/flowlogs/${Environment}"
+      RetentionInDays: 30
+
+  FlowLogRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: 'vpc-flow-logs.amazonaws.com'
+          Action: 'sts:AssumeRole'
+      Policies:
+      - PolicyName: !Sub "flowlogs-policy-${Environment}"
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - 'logs:CreateLogStream'
+            - 'logs:PutLogEvents'
+            - 'logs:DescribeLogGroups'
+            - 'logs:DescribeLogStreams'
+            Resource: !GetAtt 'FlowLogLogGroup.Arn'
+
+  FlowLog:
+    Type: AWS::EC2::FlowLog
+    Properties:
+      DeliverLogsPermissionArn: !GetAtt FlowLogRole.Arn
+      LogDestinationType: cloud-watch-logs
+      LogGroupName: !Sub "/flowlogs/${Environment}"
+      ResourceId: !Ref Vpc
+      ResourceType: VPC
+      TrafficType: ALL
+
+  SubnetPub1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock:
+        Fn::Select:
+        - 0
+        - !Cidr [ !Ref BaseCidr, 16, 12 ]
+      AvailabilityZone:
+        Fn::Select:
+        - 0
+        - Fn::GetAZs: !Ref "AWS::Region"
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Tier
+          Value: public
+        - Key: Name
+          Value: !Join
+          - '-' 
+          - - !Ref Environment
+            - pub
+            - Fn::Select:
+              - 2
+              - Fn::Split:
+                - '-'
+                - Fn::Select:
+                  - 0
+                  - Fn::GetAZs: !Ref "AWS::Region"
+
+  SubnetPub2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock:
+        Fn::Select:
+        - 1
+        - !Cidr [ !Ref BaseCidr, 16, 12 ]
+      AvailabilityZone:
+        Fn::Select:
+        - 1
+        - Fn::GetAZs: !Ref "AWS::Region"
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Tier
+          Value: public
+        - Key: Name
+          Value: !Join
+          - '-' 
+          - - !Ref Environment
+            - pub
+            - Fn::Select:
+              - 2
+              - Fn::Split:
+                - '-'
+                - Fn::Select:
+                  - 1
+                  - Fn::GetAZs: !Ref "AWS::Region"
+
+  SubnetPub3:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock:
+        Fn::Select:
+        - 2
+        - !Cidr [ !Ref BaseCidr, 16, 12 ]
+      AvailabilityZone:
+        Fn::Select:
+        - 2
+        - Fn::GetAZs: !Ref "AWS::Region"
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Tier
+          Value: public
+        - Key: Name
+          Value: !Join
+          - '-' 
+          - - !Ref Environment
+            - pub
+            - Fn::Select:
+              - 2
+              - Fn::Split:
+                - '-'
+                - Fn::Select:
+                  - 2
+                  - Fn::GetAZs: !Ref "AWS::Region"
+
+  SubnetApp1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock:
+        Fn::Select:
+        - 4
+        - !Cidr [ !Ref BaseCidr, 16, 12 ]
+      AvailabilityZone:
+        Fn::Select:
+        - 0
+        - Fn::GetAZs: !Ref "AWS::Region"
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Tier
+          Value: app
+        - Key: Name
+          Value: !Join
+          - '-' 
+          - - !Ref Environment
+            - app
+            - Fn::Select:
+              - 2
+              - Fn::Split:
+                - '-'
+                - Fn::Select:
+                  - 0
+                  - Fn::GetAZs: !Ref "AWS::Region"
+
+  SubnetApp2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock:
+        Fn::Select:
+        - 5
+        - !Cidr [ !Ref BaseCidr, 16, 12 ]
+      AvailabilityZone:
+        Fn::Select:
+        - 1
+        - Fn::GetAZs: !Ref "AWS::Region"
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Tier
+          Value: app
+        - Key: Name
+          Value: !Join
+          - '-' 
+          - - !Ref Environment
+            - app
+            - Fn::Select:
+              - 2
+              - Fn::Split:
+                - '-'
+                - Fn::Select:
+                  - 1
+                  - Fn::GetAZs: !Ref "AWS::Region"
+
+  SubnetApp3:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock:
+        Fn::Select:
+        - 6
+        - !Cidr [ !Ref BaseCidr, 16, 12 ]
+      AvailabilityZone:
+        Fn::Select:
+        - 2
+        - Fn::GetAZs: !Ref "AWS::Region"
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Tier
+          Value: app
+        - Key: Name
+          Value: !Join
+          - '-' 
+          - - !Ref Environment
+            - app
+            - Fn::Select:
+              - 2
+              - Fn::Split:
+                - '-'
+                - Fn::Select:
+                  - 2
+                  - Fn::GetAZs: !Ref "AWS::Region"
+
+  SubnetData1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock:
+        Fn::Select:
+        - 7
+        - !Cidr [ !Ref BaseCidr, 16, 12 ]
+      AvailabilityZone:
+        Fn::Select:
+        - 0
+        - Fn::GetAZs: !Ref "AWS::Region"
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Tier
+          Value: data
+        - Key: Name
+          Value: !Join
+          - '-' 
+          - - !Ref Environment
+            - data
+            - Fn::Select:
+              - 2
+              - Fn::Split:
+                - '-'
+                - Fn::Select:
+                  - 0
+                  - Fn::GetAZs: !Ref "AWS::Region"
+
+  SubnetData2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock:
+        Fn::Select:
+        - 8
+        - !Cidr [ !Ref BaseCidr, 16, 12 ]
+      AvailabilityZone:
+        Fn::Select:
+        - 1
+        - Fn::GetAZs: !Ref "AWS::Region"
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Tier
+          Value: data
+        - Key: Name
+          Value: !Join
+          - '-' 
+          - - !Ref Environment
+            - data
+            - Fn::Select:
+              - 2
+              - Fn::Split:
+                - '-'
+                - Fn::Select:
+                  - 1
+                  - Fn::GetAZs: !Ref "AWS::Region"
+
+  SubnetData3:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock:
+        Fn::Select:
+        - 9
+        - !Cidr [ !Ref BaseCidr, 16, 12 ]
+      AvailabilityZone:
+        Fn::Select:
+        - 2
+        - Fn::GetAZs: !Ref "AWS::Region"
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Tier
+          Value: data
+        - Key: Name
+          Value: !Join
+          - '-' 
+          - - !Ref Environment
+            - data
+            - Fn::Select:
+              - 2
+              - Fn::Split:
+                - '-'
+                - Fn::Select:
+                  - 2
+                  - Fn::GetAZs: !Ref "AWS::Region"
+
+  VpcIgw:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+      - Key: Name
+        Value: !Ref Environment
+
+  VpcIgwAttach:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref VpcIgw
+      VpcId: !Ref Vpc
+
+  RteTblPub:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub "${Environment}-pub"
+
+  RtePubDefault:
+    Type: AWS::EC2::Route
+    Properties: 
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref VpcIgw
+      RouteTableId: !Ref RteTblPub
+
+  RteTblPubAssocSubnet1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref RteTblPub
+      SubnetId: !Ref SubnetPub1
+
+  RteTblPubAssocSubnet2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref RteTblPub
+      SubnetId: !Ref SubnetPub2
+
+  RteTblPubAssocSubnet3:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref RteTblPub
+      SubnetId: !Ref SubnetPub3
+
+  RteTblPriv1:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub "${Environment}-priv1"
+
+  Eip1:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+
+  NatGw1:
+    DependsOn: Eip1
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt [ Eip1, AllocationId ]
+      SubnetId: !Ref SubnetPub1
+      Tags:
+      - Key: Name
+        Value: !Sub "${Environment}-ngw1"
+
+  RtePriv1Default:
+    Type: AWS::EC2::Route
+    Properties: 
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGw1
+      RouteTableId: !Ref RteTblPriv1
+
+  RteTblPrivAssocSnApp1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref RteTblPriv1
+      SubnetId: !Ref SubnetApp1
+
+  RteTblPrivAssocSnData1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref RteTblPriv1
+      SubnetId: !Ref SubnetData1
+
+  # If HighAvailability, create per-AZ
+  #  NAT GWs, private route tables, and route associations
+  #  for remaining AZs
+  RteTblPriv2:
+    Condition: HighAvailability
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub "${Environment}-priv2"
+
+  Eip2:
+    Condition: HighAvailability
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+
+  NatGw2:
+    Condition: HighAvailability
+    DependsOn: Eip2
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt [ Eip2, AllocationId ]
+      SubnetId: !Ref SubnetPub2
+      Tags:
+      - Key: Name
+        Value: !Sub "${Environment}-ngw2"
+
+  RtePriv2Default:
+    Condition: HighAvailability
+    Type: AWS::EC2::Route
+    Properties: 
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGw2
+      RouteTableId: !Ref RteTblPriv2
+
+  RteTblPrivAssocSnApp2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !If [ HighAvailability, !Ref RteTblPriv2, !Ref RteTblPriv1 ]
+      SubnetId: !Ref SubnetApp2
+
+  RteTblPrivAssocSnData2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !If [ HighAvailability, !Ref RteTblPriv2, !Ref RteTblPriv1 ]
+      SubnetId: !Ref SubnetData2
+
+  RteTblPriv3:
+    Condition: HighAvailability
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub "${Environment}-priv3"
+
+  Eip3:
+    Condition: HighAvailability
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+
+  NatGw3:
+    Condition: HighAvailability
+    DependsOn: Eip3
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt [ Eip3, AllocationId ]
+      SubnetId: !Ref SubnetPub3
+      Tags:
+      - Key: Name
+        Value: !Sub "${Environment}-ngw3"
+
+  RtePriv3Default:
+    Condition: HighAvailability
+    Type: AWS::EC2::Route
+    Properties: 
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGw3
+      RouteTableId: !Ref RteTblPriv3
+
+  RteTblPrivAssocSnApp3:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !If [ HighAvailability, !Ref RteTblPriv3, !Ref RteTblPriv1 ]
+      SubnetId: !Ref SubnetApp3
+
+  RteTblPrivAssocSnData3:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !If [ HighAvailability, !Ref RteTblPriv3, !Ref RteTblPriv1 ]
+      SubnetId: !Ref SubnetData3

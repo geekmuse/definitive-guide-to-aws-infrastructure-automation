@@ -1,0 +1,7 @@
+config:
+  aws:region: us-east-1
+  vpc-pulumi:highAvailability: "false"
+  vpc-pulumi:cidr.us-east-1: "10.100.0.0/16"
+  vpc-pulumi:cidr.us-west-2: "10.101.0.0/16"
+  vpc-pulumi:useAwsDns: "true"
+  vpc-pulumi:maxAzs: 3

@@ -1,0 +1,27 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: DevDeployment EC2 instance
+Mappings:
+  AmiByOs:
+    us-east-1:
+      AmazonLinux2: ami-0c6b1d09930fac512
+      Windows2016Base: ami-06bee8e1000e44ca4
+    us-west-2:
+      AmazonLinux2: ami-0cb72367e98845d43
+      Windows2016Base: ami-07f35a597a32e470d
+Parameters:
+  Os:
+    AllowedValues:
+      - AmazonLinux2
+      - Windows2016Base
+    Default: AmazonLinux2
+    Description: Chosen operating system
+    Type: String
+Resources:
+  DevEc2:
+    Properties:
+      ImageId: !FindInMap
+        - AmiByOs
+        - !Ref 'AWS::Region'
+        - !Ref 'Os'
+      InstanceType: t2.small
+    Type: AWS::EC2::Instance
